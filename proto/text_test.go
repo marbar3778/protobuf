@@ -40,11 +40,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 
-	proto3pb "github.com/gogo/protobuf/proto/proto3_proto"
-	pb "github.com/gogo/protobuf/proto/test_proto"
-	"github.com/gogo/protobuf/types"
+	proto3pb "github.com/golang/protobuf/proto/proto3_proto"
+	pb "github.com/golang/protobuf/proto/test_proto"
+	anypb "github.com/golang/protobuf/ptypes/any"
 )
 
 // textMessage implements the methods that allow it to marshal and unmarshal
@@ -218,13 +218,13 @@ func TestTextOneof(t *testing.T) {
 		// zero message
 		{&pb.Communique{}, ``},
 		// scalar field
-		{&pb.Communique{Union: &pb.Communique_Number{Number: 4}}, `number:4`},
+		{&pb.Communique{Union: &pb.Communique_Number{4}}, `number:4`},
 		// message field
 		{&pb.Communique{Union: &pb.Communique_Msg{
-			Msg: &pb.Strings{StringField: proto.String("why hello!")},
+			&pb.Strings{StringField: proto.String("why hello!")},
 		}}, `msg:<string_field:"why hello!" >`},
 		// bad oneof (should not panic)
-		{&pb.Communique{Union: &pb.Communique_Msg{Msg: nil}}, `msg:/* nil */`},
+		{&pb.Communique{Union: &pb.Communique_Msg{nil}}, `msg:/* nil */`},
 	}
 	for _, test := range tests {
 		got := strings.TrimSpace(test.m.String())
@@ -341,13 +341,13 @@ func TestStringEscaping(t *testing.T) {
 		}
 
 		// Check round-trip.
-		pbStrings := new(pb.Strings)
-		if err := proto.UnmarshalText(s, pbStrings); err != nil {
+		pb := new(pb.Strings)
+		if err := proto.UnmarshalText(s, pb); err != nil {
 			t.Errorf("#%d: UnmarshalText: %v", i, err)
 			continue
 		}
-		if !proto.Equal(pbStrings, tc.in) {
-			t.Errorf("#%d: Round-trip failed:\nstart: %v\n  end: %v", i, tc.in, pbStrings)
+		if !proto.Equal(pb, tc.in) {
+			t.Errorf("#%d: Round-trip failed:\nstart: %v\n  end: %v", i, tc.in, pb)
 		}
 	}
 }
@@ -417,7 +417,7 @@ func TestRepeatedNilText(t *testing.T) {
 	m := &pb.MessageList{
 		Message: []*pb.MessageList_Message{
 			nil,
-			{
+			&pb.MessageList_Message{
 				Name: proto.String("Horse"),
 			},
 			nil,
@@ -487,7 +487,7 @@ func TestRacyMarshal(t *testing.T) {
 	m := &proto3pb.Message{
 		Name:        "David",
 		ResultCount: 47,
-		Anything:    &types.Any{TypeUrl: "type.googleapis.com/" + proto.MessageName(any), Value: b},
+		Anything:    &anypb.Any{TypeUrl: "type.googleapis.com/" + proto.MessageName(any), Value: b},
 	}
 
 	wantText := proto.MarshalTextString(m)

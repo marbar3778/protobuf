@@ -38,10 +38,11 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
-	pb "github.com/gogo/protobuf/proto/test_proto"
+	"github.com/golang/protobuf/proto"
+	pb "github.com/golang/protobuf/proto/test_proto"
 )
 
 func TestGetExtensionsWithMissingExtensions(t *testing.T) {
@@ -192,7 +193,7 @@ func TestExtensionDescsWithUnregisteredExtensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not marshal msg: %v", err)
 	}
-	if err = proto.Unmarshal(b, msg); err != nil {
+	if err := proto.Unmarshal(b, msg); err != nil {
 		t.Fatalf("Could not unmarshal into msg: %v", err)
 	}
 
@@ -622,8 +623,7 @@ func TestUnmarshalRepeatingNonRepeatedExtension(t *testing.T) {
 			t.Fatalf("[%s] Invalid extension", test.name)
 		}
 		if !proto.Equal(ext, &want) {
-			t.Errorf("[%s] Wrong value for ComplexExtension: got: %v want: %v\n", test.name, ext, &want)
-
+			t.Errorf("[%s] Wrong value for ComplexExtension: got: %s want: %s\n", test.name, ext, &want)
 		}
 	}
 }
@@ -671,19 +671,20 @@ func TestMarshalRace(t *testing.T) {
 	// GetExtension will decode it lazily. Make sure this does
 	// not race against Marshal.
 
-	errChan := make(chan error, 6)
+	wg := sync.WaitGroup{}
+	errs := make(chan error, 3)
 	for n := 3; n > 0; n-- {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			_, err := proto.Marshal(m)
-			errChan <- err
-		}()
-		go func() {
-			_, err := proto.GetExtension(m, pb.E_Ext_More)
-			errChan <- err
+			errs <- err
 		}()
 	}
-	for i := 0; i < 6; i++ {
-		err := <-errChan
+	wg.Wait()
+	close(errs)
+
+	for err = range errs {
 		if err != nil {
 			t.Fatal(err)
 		}

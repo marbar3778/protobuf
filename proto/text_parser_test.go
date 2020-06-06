@@ -36,9 +36,9 @@ import (
 	"math"
 	"testing"
 
-	. "github.com/gogo/protobuf/proto"
-	proto3pb "github.com/gogo/protobuf/proto/proto3_proto"
-	. "github.com/gogo/protobuf/proto/test_proto"
+	. "github.com/golang/protobuf/proto"
+	proto3pb "github.com/golang/protobuf/proto/proto3_proto"
+	. "github.com/golang/protobuf/proto/test_proto"
 )
 
 type UnmarshalTextTest struct {
@@ -661,7 +661,7 @@ func TestMapParsing(t *testing.T) {
 func TestOneofParsing(t *testing.T) {
 	const in = `name:"Shrek"`
 	m := new(Communique)
-	want := &Communique{Union: &Communique_Name{Name: "Shrek"}}
+	want := &Communique{Union: &Communique_Name{"Shrek"}}
 	if err := UnmarshalText(in, m); err != nil {
 		t.Fatal(err)
 	}

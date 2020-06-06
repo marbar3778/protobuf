@@ -104,8 +104,6 @@ func extendable(p interface{}) (extendableProto, error) {
 			return nil, fmt.Errorf("proto: nil %T is not extendable", p)
 		}
 		return extensionAdapter{p}, nil
-	case extensionsBytes:
-		return slowExtensionAdapter{p}, nil
 	}
 	// Don't allocate a specific error containing %T:
 	// this is the hot path for Clone and MarshalText.
@@ -187,19 +185,29 @@ type Extension struct {
 	// extension will have only enc set. When such an extension is
 	// accessed using GetExtension (or GetExtensions) desc and value
 	// will be set.
-	desc  *ExtensionDesc
+	desc *ExtensionDesc
+
+	// value is a concrete value for the extension field. Let the type of
+	// desc.ExtensionType be the "API type" and the type of Extension.value
+	// be the "storage type". The API type and storage type are the same except:
+	//	* For scalars (except []byte), the API type uses *T,
+	//	while the storage type uses T.
+	//	* For repeated fields, the API type uses []T, while the storage type
+	//	uses *[]T.
+	//
+	// The reason for the divergence is so that the storage type more naturally
+	// matches what is expected of when retrieving the values through the
+	// protobuf reflection APIs.
+	//
+	// The value may only be populated if desc is also populated.
 	value interface{}
-	enc   []byte
+
+	// enc is the raw bytes for the extension field.
+	enc []byte
 }
 
 // SetRawExtension is for testing only.
 func SetRawExtension(base Message, id int32, b []byte) {
-	if ebase, ok := base.(extensionsBytes); ok {
-		clearExtension(base, id)
-		ext := ebase.GetExtensions()
-		*ext = append(*ext, b...)
-		return
-	}
 	epb, err := extendable(base)
 	if err != nil {
 		return
@@ -224,9 +232,6 @@ func checkExtensionTypes(pb extendableProto, extension *ExtensionDesc) error {
 	// Check the extended type.
 	if ea, ok := pbi.(extensionAdapter); ok {
 		pbi = ea.extendableProtoV1
-	}
-	if ea, ok := pbi.(slowExtensionAdapter); ok {
-		pbi = ea.extensionsBytes
 	}
 	if a, b := reflect.TypeOf(pbi), reflect.TypeOf(extension.ExtendedType); a != b {
 		return fmt.Errorf("proto: bad extended type; %v does not extend %v", b, a)
@@ -276,26 +281,6 @@ func extensionProperties(ed *ExtensionDesc) *Properties {
 
 // HasExtension returns whether the given extension is present in pb.
 func HasExtension(pb Message, extension *ExtensionDesc) bool {
-	if epb, doki := pb.(extensionsBytes); doki {
-		ext := epb.GetExtensions()
-		buf := *ext
-		o := 0
-		for o < len(buf) {
-			tag, n := DecodeVarint(buf[o:])
-			fieldNum := int32(tag >> 3)
-			if int32(fieldNum) == extension.Field {
-				return true
-			}
-			wireType := int(tag & 0x7)
-			o += n
-			l, err := size(buf[o:], wireType)
-			if err != nil {
-				return false
-			}
-			o += l
-		}
-		return false
-	}
 	// TODO: Check types, field numbers, etc.?
 	epb, err := extendable(pb)
 	if err != nil {
@@ -313,24 +298,13 @@ func HasExtension(pb Message, extension *ExtensionDesc) bool {
 
 // ClearExtension removes the given extension from pb.
 func ClearExtension(pb Message, extension *ExtensionDesc) {
-	clearExtension(pb, extension.Field)
-}
-
-func clearExtension(pb Message, fieldNum int32) {
-	if epb, ok := pb.(extensionsBytes); ok {
-		offset := 0
-		for offset != -1 {
-			offset = deleteExtension(epb, fieldNum, offset)
-		}
-		return
-	}
 	epb, err := extendable(pb)
 	if err != nil {
 		return
 	}
 	// TODO: Check types, field numbers, etc.?
 	extmap := epb.extensionsWrite()
-	delete(extmap, fieldNum)
+	delete(extmap, extension.Field)
 }
 
 // GetExtension retrieves a proto2 extended field from pb.
@@ -343,11 +317,6 @@ func clearExtension(pb Message, fieldNum int32) {
 // If the descriptor is not type complete (i.e., ExtensionDesc.ExtensionType is nil),
 // then GetExtension returns the raw encoded bytes of the field extension.
 func GetExtension(pb Message, extension *ExtensionDesc) (interface{}, error) {
-	if epb, doki := pb.(extensionsBytes); doki {
-		ext := epb.GetExtensions()
-		return decodeExtensionFromBytes(extension, *ext)
-	}
-
 	epb, err := extendable(pb)
 	if err != nil {
 		return nil, err
@@ -355,8 +324,8 @@ func GetExtension(pb Message, extension *ExtensionDesc) (interface{}, error) {
 
 	if extension.ExtendedType != nil {
 		// can only check type if this is a complete descriptor
-		if cerr := checkExtensionTypes(epb, extension); cerr != nil {
-			return nil, cerr
+		if err := checkExtensionTypes(epb, extension); err != nil {
+			return nil, err
 		}
 	}
 
@@ -381,7 +350,7 @@ func GetExtension(pb Message, extension *ExtensionDesc) (interface{}, error) {
 			// descriptors with the same field number.
 			return nil, errors.New("proto: descriptor conflict")
 		}
-		return e.value, nil
+		return extensionAsLegacyType(e.value), nil
 	}
 
 	if extension.ExtensionType == nil {
@@ -396,11 +365,11 @@ func GetExtension(pb Message, extension *ExtensionDesc) (interface{}, error) {
 
 	// Remember the decoded version and drop the encoded version.
 	// That way it is safe to mutate what we return.
-	e.value = v
+	e.value = extensionAsStorageType(v)
 	e.desc = extension
 	e.enc = nil
 	emap[extension.Field] = e
-	return e.value, nil
+	return extensionAsLegacyType(e.value), nil
 }
 
 // defaultExtensionValue returns the default value for extension.
@@ -526,16 +495,6 @@ func ExtensionDescs(pb Message) ([]*ExtensionDesc, error) {
 
 // SetExtension sets the specified extension of pb to the specified value.
 func SetExtension(pb Message, extension *ExtensionDesc, value interface{}) error {
-	if epb, ok := pb.(extensionsBytes); ok {
-		ClearExtension(pb, extension)
-		newb, err := encodeExtension(extension, value)
-		if err != nil {
-			return err
-		}
-		bb := epb.GetExtensions()
-		*bb = append(*bb, newb...)
-		return nil
-	}
 	epb, err := extendable(pb)
 	if err != nil {
 		return err
@@ -557,17 +516,12 @@ func SetExtension(pb Message, extension *ExtensionDesc, value interface{}) error
 	}
 
 	extmap := epb.extensionsWrite()
-	extmap[extension.Field] = Extension{desc: extension, value: value}
+	extmap[extension.Field] = Extension{desc: extension, value: extensionAsStorageType(value)}
 	return nil
 }
 
 // ClearAllExtensions clears all extensions from pb.
 func ClearAllExtensions(pb Message) {
-	if epb, doki := pb.(extensionsBytes); doki {
-		ext := epb.GetExtensions()
-		*ext = []byte{}
-		return
-	}
 	epb, err := extendable(pb)
 	if err != nil {
 		return
@@ -602,4 +556,52 @@ func RegisterExtension(desc *ExtensionDesc) {
 // The argument pb should be a nil pointer to the struct type.
 func RegisteredExtensions(pb Message) map[int32]*ExtensionDesc {
 	return extensionMaps[reflect.TypeOf(pb).Elem()]
+}
+
+// extensionAsLegacyType converts an value in the storage type as the API type.
+// See Extension.value.
+func extensionAsLegacyType(v interface{}) interface{} {
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Bool, reflect.Int32, reflect.Int64, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.String:
+		// Represent primitive types as a pointer to the value.
+		rv2 := reflect.New(rv.Type())
+		rv2.Elem().Set(rv)
+		v = rv2.Interface()
+	case reflect.Ptr:
+		// Represent slice types as the value itself.
+		switch rv.Type().Elem().Kind() {
+		case reflect.Slice:
+			if rv.IsNil() {
+				v = reflect.Zero(rv.Type().Elem()).Interface()
+			} else {
+				v = rv.Elem().Interface()
+			}
+		}
+	}
+	return v
+}
+
+// extensionAsStorageType converts an value in the API type as the storage type.
+// See Extension.value.
+func extensionAsStorageType(v interface{}) interface{} {
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Ptr:
+		// Represent slice types as the value itself.
+		switch rv.Type().Elem().Kind() {
+		case reflect.Bool, reflect.Int32, reflect.Int64, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.String:
+			if rv.IsNil() {
+				v = reflect.Zero(rv.Type().Elem()).Interface()
+			} else {
+				v = rv.Elem().Interface()
+			}
+		}
+	case reflect.Slice:
+		// Represent slice types as a pointer to the value.
+		if rv.Type().Elem().Kind() != reflect.Uint8 {
+			rv2 := reflect.New(rv.Type())
+			rv2.Elem().Set(rv)
+			v = rv2.Interface()
+		}
+	}
+	return v
 }

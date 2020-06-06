@@ -45,11 +45,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/jsonpb"
-	. "github.com/gogo/protobuf/proto"
-	pb3 "github.com/gogo/protobuf/proto/proto3_proto"
-	. "github.com/gogo/protobuf/proto/test_proto"
-	descriptorpb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/golang/protobuf/jsonpb"
+	. "github.com/golang/protobuf/proto"
+	pb3 "github.com/golang/protobuf/proto/proto3_proto"
+	. "github.com/golang/protobuf/proto/test_proto"
+	descriptorpb "github.com/golang/protobuf/protoc-gen-go/descriptor"
 )
 
 var globalO *Buffer
@@ -1008,7 +1008,7 @@ func TestSubmessageUnrecognizedFields(t *testing.T) {
 
 	// Unmarshal into an OldMessage.
 	om := new(OldMessage)
-	if err = Unmarshal(b, om); err != nil {
+	if err := Unmarshal(b, om); err != nil {
 		t.Fatalf("Unmarshal to OldMessage: %v", err)
 	}
 	exp := &OldMessage{
@@ -1322,7 +1322,7 @@ func TestTypedNilMarshal(t *testing.T) {
 	}
 
 	{
-		m := &Communique{Union: &Communique_Msg{Msg: nil}}
+		m := &Communique{Union: &Communique_Msg{nil}}
 		if _, err := Marshal(m); err == nil || err == ErrNil {
 			t.Errorf("Marshal(%#v): got %v, want errOneofHasNil", m, err)
 		}
@@ -1724,7 +1724,7 @@ func TestMessageSetMarshalOrder(t *testing.T) {
 		}
 
 		m2 := &MyMessageSet{}
-		if err = Unmarshal(buf, m2); err != nil {
+		if err := Unmarshal(buf, m2); err != nil {
 			t.Errorf("Unmarshal: %v", err)
 		}
 		b2, err := Marshal(m2)
@@ -1865,42 +1865,42 @@ func TestRequiredNotSetError(t *testing.T) {
 		"c906c0ffffffffffffff" // field 105, encoding 1, -64 fixed64
 
 	o := old()
-	mbytes, err := Marshal(pb)
+	bytes, err := Marshal(pb)
 	if _, ok := err.(*RequiredNotSetError); !ok {
 		fmt.Printf("marshal-1 err = %v, want *RequiredNotSetError", err)
-		o.DebugPrint("", mbytes)
+		o.DebugPrint("", bytes)
 		t.Fatalf("expected = %s", expected)
 	}
 	if !strings.Contains(err.Error(), "RequiredField.Label") {
 		t.Errorf("marshal-1 wrong err msg: %v", err)
 	}
-	if !equal(mbytes, expected, t) {
-		o.DebugPrint("neq 1", mbytes)
+	if !equal(bytes, expected, t) {
+		o.DebugPrint("neq 1", bytes)
 		t.Fatalf("expected = %s", expected)
 	}
 
 	// Now test Unmarshal by recreating the original buffer.
 	pbd := new(GoTest)
-	err = Unmarshal(mbytes, pbd)
+	err = Unmarshal(bytes, pbd)
 	if _, ok := err.(*RequiredNotSetError); !ok {
 		t.Fatalf("unmarshal err = %v, want *RequiredNotSetError", err)
-		o.DebugPrint("", mbytes)
+		o.DebugPrint("", bytes)
 		t.Fatalf("string = %s", expected)
 	}
 	if !strings.Contains(err.Error(), "RequiredField.Label") && !strings.Contains(err.Error(), "RequiredField.{Unknown}") {
 		t.Errorf("unmarshal wrong err msg: %v", err)
 	}
-	mbytes, err = Marshal(pbd)
+	bytes, err = Marshal(pbd)
 	if _, ok := err.(*RequiredNotSetError); !ok {
 		t.Errorf("marshal-2 err = %v, want *RequiredNotSetError", err)
-		o.DebugPrint("", mbytes)
+		o.DebugPrint("", bytes)
 		t.Fatalf("string = %s", expected)
 	}
 	if !strings.Contains(err.Error(), "RequiredField.Label") {
 		t.Errorf("marshal-2 wrong err msg: %v", err)
 	}
-	if !equal(mbytes, expected, t) {
-		o.DebugPrint("neq 2", mbytes)
+	if !equal(bytes, expected, t) {
+		o.DebugPrint("neq 2", bytes)
 		t.Fatalf("string = %s", expected)
 	}
 }
@@ -2134,7 +2134,7 @@ func TestOneof(t *testing.T) {
 	}
 
 	m = &Communique{
-		Union: &Communique_Name{Name: "Barry"},
+		Union: &Communique_Name{"Barry"},
 	}
 
 	// Round-trip.
@@ -2146,7 +2146,7 @@ func TestOneof(t *testing.T) {
 		t.Errorf("Incorrect marshal of message with oneof: %v", b)
 	}
 	m.Reset()
-	if err = Unmarshal(b, m); err != nil {
+	if err := Unmarshal(b, m); err != nil {
 		t.Fatalf("Unmarshal of message with oneof: %v", err)
 	}
 	if x, ok := m.Union.(*Communique_Name); !ok || x.Name != "Barry" {
@@ -2157,7 +2157,7 @@ func TestOneof(t *testing.T) {
 	}
 
 	// Let's try with a message in the oneof.
-	m.Union = &Communique_Msg{Msg: &Strings{StringField: String("deep deep string")}}
+	m.Union = &Communique_Msg{&Strings{StringField: String("deep deep string")}}
 	b, err = Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal of message with oneof set to message: %v", err)
@@ -2271,8 +2271,8 @@ func TestInvalidUTF8(t *testing.T) {
 		want:   []byte{0x12, 0x07, 0xde, 0xad, 0xbe, 0xef, 0x80, 0x00, 0xff},
 	}, {
 		label:  "Oneof",
-		proto2: &TestUTF8{Oneof: &TestUTF8_Field{Field: invalidUTF8}},
-		proto3: &pb3.TestUTF8{Oneof: &pb3.TestUTF8_Field{Field: invalidUTF8}},
+		proto2: &TestUTF8{Oneof: &TestUTF8_Field{invalidUTF8}},
+		proto3: &pb3.TestUTF8{Oneof: &pb3.TestUTF8_Field{invalidUTF8}},
 		want:   []byte{0x1a, 0x07, 0xde, 0xad, 0xbe, 0xef, 0x80, 0x00, 0xff},
 	}, {
 		label:  "MapKey",
@@ -2323,25 +2323,6 @@ func TestInvalidUTF8(t *testing.T) {
 		if !Equal(m, tt.proto3) {
 			t.Errorf("proto3.%s: output mismatch:\ngot  %v\nwant %v", tt.label, m, tt.proto2)
 		}
-	}
-}
-
-type CustomRawMessage []byte
-
-func (m *CustomRawMessage) Marshal() ([]byte, error) {
-	return []byte(*m), nil
-}
-func (m *CustomRawMessage) Reset()         { *m = nil }
-func (m *CustomRawMessage) String() string { return fmt.Sprintf("%x", *m) }
-func (m *CustomRawMessage) ProtoMessage()  {}
-
-func TestDeterministicErrorOnCustomMarshaler(t *testing.T) {
-	in := CustomRawMessage{1, 2, 3}
-	var b1 Buffer
-	b1.SetDeterministic(true)
-	err := b1.Marshal(&in)
-	if err == nil || !strings.Contains(err.Error(), "deterministic") {
-		t.Fatalf("Marshal error:\ngot  %v\nwant deterministic not supported error", err)
 	}
 }
 
@@ -2538,6 +2519,6 @@ func TestRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = m.String()
+		m.String()
 	}()
 }

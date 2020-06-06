@@ -34,9 +34,9 @@ package proto_test
 import (
 	"testing"
 
-	. "github.com/gogo/protobuf/proto"
-	proto3pb "github.com/gogo/protobuf/proto/proto3_proto"
-	pb "github.com/gogo/protobuf/proto/test_proto"
+	. "github.com/golang/protobuf/proto"
+	proto3pb "github.com/golang/protobuf/proto/proto3_proto"
+	pb "github.com/golang/protobuf/proto/test_proto"
 )
 
 // Four identical base messages.
@@ -217,20 +217,20 @@ var EqualTests = []struct {
 	},
 	{
 		"oneof same",
-		&pb.Communique{Union: &pb.Communique_Number{Number: 41}},
-		&pb.Communique{Union: &pb.Communique_Number{Number: 41}},
+		&pb.Communique{Union: &pb.Communique_Number{41}},
+		&pb.Communique{Union: &pb.Communique_Number{41}},
 		true,
 	},
 	{
 		"oneof one nil",
-		&pb.Communique{Union: &pb.Communique_Number{Number: 41}},
+		&pb.Communique{Union: &pb.Communique_Number{41}},
 		&pb.Communique{},
 		false,
 	},
 	{
 		"oneof different",
-		&pb.Communique{Union: &pb.Communique_Number{Number: 41}},
-		&pb.Communique{Union: &pb.Communique_Name{Name: "Bobby Tables"}},
+		&pb.Communique{Union: &pb.Communique_Number{41}},
+		&pb.Communique{Union: &pb.Communique_Name{"Bobby Tables"}},
 		false,
 	},
 }

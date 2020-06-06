@@ -34,9 +34,10 @@ package proto_test
 import (
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
-	proto3pb "github.com/gogo/protobuf/proto/proto3_proto"
-	pb "github.com/gogo/protobuf/proto/test_proto"
+	"github.com/golang/protobuf/proto"
+
+	proto3pb "github.com/golang/protobuf/proto/proto3_proto"
+	pb "github.com/golang/protobuf/proto/test_proto"
 )
 
 func TestDiscardUnknown(t *testing.T) {
@@ -80,25 +81,25 @@ func TestDiscardUnknown(t *testing.T) {
 	}, {
 		desc: "OneOf",
 		in: &pb.Communique{
-			Union: &pb.Communique_Msg{Msg: &pb.Strings{
+			Union: &pb.Communique_Msg{&pb.Strings{
 				StringField:      proto.String("123"),
 				XXX_unrecognized: []byte("blah"),
 			}},
 			XXX_unrecognized: []byte("blah"),
 		},
 		want: &pb.Communique{
-			Union: &pb.Communique_Msg{Msg: &pb.Strings{StringField: proto.String("123")}},
+			Union: &pb.Communique_Msg{&pb.Strings{StringField: proto.String("123")}},
 		},
 	}, {
 		desc: "Map",
 		in: &pb.MessageWithMap{MsgMapping: map[int64]*pb.FloatingPoint{
-			0x4002: {
+			0x4002: &pb.FloatingPoint{
 				Exact:            proto.Bool(true),
 				XXX_unrecognized: []byte("blah"),
 			},
 		}},
 		want: &pb.MessageWithMap{MsgMapping: map[int64]*pb.FloatingPoint{
-			0x4002: {Exact: proto.Bool(true)},
+			0x4002: &pb.FloatingPoint{Exact: proto.Bool(true)},
 		}},
 	}, {
 		desc: "Extension",

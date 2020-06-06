@@ -530,32 +530,10 @@ func (mi *mergeInfo) computeMergeInfo() {
 			}
 		case reflect.Struct:
 			switch {
-			case isSlice && !isPointer: // E.g. []pb.T
-				mergeInfo := getMergeInfo(tf)
-				zero := reflect.Zero(tf)
-				mfi.merge = func(dst, src pointer) {
-					// TODO: Make this faster?
-					dstsp := dst.asPointerTo(f.Type)
-					dsts := dstsp.Elem()
-					srcs := src.asPointerTo(f.Type).Elem()
-					for i := 0; i < srcs.Len(); i++ {
-						dsts = reflect.Append(dsts, zero)
-						srcElement := srcs.Index(i).Addr()
-						dstElement := dsts.Index(dsts.Len() - 1).Addr()
-						mergeInfo.merge(valToPointer(dstElement), valToPointer(srcElement))
-					}
-					if dsts.IsNil() {
-						dsts = reflect.MakeSlice(f.Type, 0, 0)
-					}
-					dstsp.Elem().Set(dsts)
-				}
 			case !isPointer:
-				mergeInfo := getMergeInfo(tf)
-				mfi.merge = func(dst, src pointer) {
-					mergeInfo.merge(dst, src)
-				}
+				panic(fmt.Sprintf("message field %s without pointer", tf))
 			case isSlice: // E.g., []*pb.T
-				mergeInfo := getMergeInfo(tf)
+				mi := getMergeInfo(tf)
 				mfi.merge = func(dst, src pointer) {
 					sps := src.getPointerSlice()
 					if sps != nil {
@@ -564,7 +542,7 @@ func (mi *mergeInfo) computeMergeInfo() {
 							var dp pointer
 							if !sp.isNil() {
 								dp = valToPointer(reflect.New(tf))
-								mergeInfo.merge(dp, sp)
+								mi.merge(dp, sp)
 							}
 							dps = append(dps, dp)
 						}
@@ -575,7 +553,7 @@ func (mi *mergeInfo) computeMergeInfo() {
 					}
 				}
 			default: // E.g., *pb.T
-				mergeInfo := getMergeInfo(tf)
+				mi := getMergeInfo(tf)
 				mfi.merge = func(dst, src pointer) {
 					sp := src.getPointer()
 					if !sp.isNil() {
@@ -584,7 +562,7 @@ func (mi *mergeInfo) computeMergeInfo() {
 							dp = valToPointer(reflect.New(tf))
 							dst.setPointer(dp)
 						}
-						mergeInfo.merge(dp, sp)
+						mi.merge(dp, sp)
 					}
 				}
 			}

@@ -35,9 +35,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
-	pb "github.com/gogo/protobuf/proto/proto3_proto"
-	tpb "github.com/gogo/protobuf/proto/test_proto"
+	"github.com/golang/protobuf/proto"
+	pb "github.com/golang/protobuf/proto/proto3_proto"
+	tpb "github.com/golang/protobuf/proto/test_proto"
 )
 
 func TestProto3ZeroValues(t *testing.T) {
@@ -126,7 +126,7 @@ func TestProto3SetDefaults(t *testing.T) {
 		},
 		Proto2Field: &tpb.SubDefaults{N: proto.Int64(7)},
 		Proto2Value: map[string]*tpb.SubDefaults{
-			"badlands": {N: proto.Int64(7)},
+			"badlands": &tpb.SubDefaults{N: proto.Int64(7)},
 		},
 	}
 
